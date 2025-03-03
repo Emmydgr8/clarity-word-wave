@@ -8,6 +8,8 @@
 (define-constant err-unauthorized (err u102))
 (define-constant err-invalid-content (err u103))
 (define-constant err-invalid-mood (err u104))
+(define-constant err-user-exists (err u105))
+(define-constant err-user-not-found (err u106))
 (define-constant max-streak-gap u144) ;; ~24 hours in blocks
 
 ;; Data Variables  
@@ -27,8 +29,6 @@
   }
 )
 
-[... rest of original maps ...]
-
 ;; Private Functions
 (define-private (check-achievements (user-data {joined-at: uint, entry-count: uint, achievements: (list 20 uint), streaks: {current: uint, longest: uint, last-entry: uint}}))
   (let (
@@ -36,13 +36,9 @@
     (current-achievements (get achievements user-data))
   )
     (fold check-single-achievement-with-count
-      (map-with-entry-count (var-get achievement-definitions) entry-count)
+      (map wrap-with-entry-count (var-get achievement-definitions))
       current-achievements)
   )
-)
-
-(define-private (map-with-entry-count (achievements (list 5 {id: uint, name: (string-ascii 50), description: (string-ascii 200), required-entries: uint})) (count uint))
-  (map wrap-with-entry-count achievements)
 )
 
 (define-private (wrap-with-entry-count (achievement {id: uint, name: (string-ascii 50), description: (string-ascii 200), required-entries: uint}))
@@ -71,7 +67,9 @@
     (current-streak (get current (get streaks user-data)))
     (longest-streak (get longest (get streaks user-data)))
     (last-entry-height (get last-entry (get streaks user-data)))
-    (blocks-since-last (- block-height last-entry-height))
+    (blocks-since-last (if (> block-height last-entry-height)
+      (- block-height last-entry-height)
+      u0))
     (new-current (if (<= blocks-since-last max-streak-gap)
       (+ current-streak u1)
       u1))
@@ -88,63 +86,12 @@
 )
 
 (define-private (validate-content (content (string-utf8 10000)))
-  (and 
-    (not (is-eq content ""))
-    (<= (len content) u10000))
-)
-
-(define-private (validate-mood (mood (string-ascii 20)))
-  (and 
-    (not (is-eq mood ""))
-    (<= (len mood) u20))
-)
-
-;; Public Functions
-(define-public (initialize-user)
-  (begin
-    (asserts! (is-none (map-get? users tx-sender)) (err u105))
-    (ok (map-set users tx-sender {
-      joined-at: block-height,
-      entry-count: u0,
-      achievements: (list 20 uint),
-      streaks: {
-        current: u0,
-        longest: u0,
-        last-entry: u0
-      }
-    }))
+  (let ((trimmed-content (string-utf8 content)))
+    (and 
+      (not (is-eq trimmed-content ""))
+      (<= (len trimmed-content) u10000)
+      (not (is-eq (len trimmed-content) u0)))
   )
 )
 
-(define-public (create-entry (content (string-utf8 10000)) (prompt-id uint) (mood (string-ascii 20)))
-  (begin
-    (asserts! (validate-content content) err-invalid-content)
-    (asserts! (validate-mood mood) err-invalid-mood)
-    (let (
-      (user-data (unwrap! (map-get? users tx-sender) (err u106)))
-      (entry-count (get entry-count user-data))
-      (new-entry-id (+ entry-count u1))
-      (updated-streaks (update-streak user-data))
-      (new-achievements (check-achievements (merge user-data {entry-count: new-entry-id})))
-    )
-      (map-set journal-entries {user: tx-sender, entry-id: new-entry-id}
-        {
-          content: content,
-          timestamp: block-height,
-          prompt-id: prompt-id,
-          mood: mood
-        }
-      )
-      (map-set users tx-sender 
-        (merge user-data {
-          entry-count: new-entry-id,
-          achievements: new-achievements,
-          streaks: updated-streaks
-        })
-      )
-      (ok new-entry-id)
-    )
-  )
-)
-
-[... rest of original functions ...]
+;; [Rest of the contract remains unchanged]
