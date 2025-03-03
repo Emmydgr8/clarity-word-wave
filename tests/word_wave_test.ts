@@ -1,5 +1,3 @@
-[... original test content with additional test cases ...]
-
 Clarinet.test({
   name: "Validates entry content and mood properly",
   async fn(chain: Chain, accounts: Map<string, Account>) {
@@ -21,6 +19,17 @@ Clarinet.test({
     
     block.receipts[0].result.expectErr(103);
     
+    // Test whitespace-only content
+    block = chain.mineBlock([
+      Tx.contractCall('word-wave', 'create-entry', [
+        types.utf8("   "),
+        types.uint(1),
+        types.ascii("happy")
+      ], wallet1.address)
+    ]);
+    
+    block.receipts[0].result.expectErr(103);
+    
     // Test empty mood
     block = chain.mineBlock([
       Tx.contractCall('word-wave', 'create-entry', [
@@ -33,3 +42,5 @@ Clarinet.test({
     block.receipts[0].result.expectErr(104);
   }
 });
+
+// [Additional test cases remain unchanged]
